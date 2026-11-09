@@ -1,4 +1,4 @@
-# Managed by wgcontrol — DNS only on WireGuard interface
+# Managed by wgcontrol, DNS only on WireGuard interface
 # Do NOT listen on public interfaces.
 interface={{WG_INTERFACE}}
 listen-address={{SERVER_VPN_IP}}

@@ -8,7 +8,7 @@
 - Dedicated ed25519 keys under `~/.wgcontrol/keys/` (mode 600).
 - Remote operations only via fixed helpers with JSON I/O.
 - Destructive actions require explicit confirmation (`DELETE WIREGUARD`, peer revoke confirm).
-- DNS history is sensitive — restrict dashboard access and use retention settings.
+- DNS history is sensitive, restrict dashboard access and use retention settings.
 - Never commit `.env`, SQLite DB, or private keys.
 
 ## Rotate compromised secrets

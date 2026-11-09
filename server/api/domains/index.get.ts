@@ -45,5 +45,5 @@ export default defineEventHandler(async (event) => {
 })
 
 function disclaimer() {
-  return 'DNS lookups only — not full browsing history. Clients must use VPN DNS (10.7.0.1). DoH/DoT, Android Private DNS, app DNS, and cached queries may be invisible.'
+  return 'DNS lookups only, not full browsing history. Clients must use VPN DNS (10.7.0.1). DoH/DoT, Android Private DNS, app DNS, and cached queries may be invisible.'
 }

@@ -62,7 +62,7 @@ export default defineEventHandler(async (event) => {
     detail: { deviceName: body.deviceName, vpnIp: data.vpnIp, publicKey: data.publicKey }
   })
 
-  // clientConfig returned once — not stored
+  // clientConfig returned once, not stored
   return {
     peer: inserted[0],
     clientConfig: data.clientConfig,

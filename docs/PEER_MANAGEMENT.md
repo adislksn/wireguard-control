@@ -27,4 +27,4 @@ AllowedIPs = 10.7.0.x/32
 
 ## Metadata
 
-Human-readable names live in local SQLite (`peers.device_name`), keyed by public key — not inside WireGuard private material.
+Human-readable names live in local SQLite (`peers.device_name`), keyed by public key, not inside WireGuard private material.

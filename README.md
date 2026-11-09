@@ -46,9 +46,9 @@ Change the password immediately after first login.
 
 ### 4. Monitor
 
-- **Overview** — connection health, totals, recent peers
-- **Domains** — DNS lookups per peer (requires VPN DNS on clients)
-- **Analytics** — traffic trends
+- **Overview** → connection health, totals, recent peers
+- **Domains** → DNS lookups per peer (requires VPN DNS on clients)
+- **Analytics** → traffic trends
 
 ## Scripts
 
@@ -69,7 +69,7 @@ Change the password immediately after first login.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE).
+MIT License, see [LICENSE](LICENSE).
 
 Copyright (c) 2026 wgcontrol contributors.
 Original Nuxt UI dashboard template portions © Nuxt UI Templates.
