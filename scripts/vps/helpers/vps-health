@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+
+
+def read_mem():
+    info = {}
+    with open("/proc/meminfo") as f:
+        for line in f:
+            k, v = line.split(":")
+            info[k] = int(v.strip().split()[0]) * 1024
+    total = info.get("MemTotal", 0)
+    avail = info.get("MemAvailable", 0)
+    used = total - avail
+    return {"total": total, "available": avail, "used": used, "usedPercent": round((used / total) * 100, 2) if total else 0}
+
+
+def read_load():
+    with open("/proc/loadavg") as f:
+        a, b, c, *_ = f.read().split()
+    return {"load1": float(a), "load5": float(b), "load15": float(c)}
+
+
+def read_disk():
+    st = os.statvfs("/")
+    total = st.f_blocks * st.f_frsize
+    free = st.f_bavail * st.f_frsize
+    used = total - free
+    return {"total": total, "free": free, "used": used, "usedPercent": round((used / total) * 100, 2) if total else 0}
+
+
+def main():
+    uptime = float(open("/proc/uptime").read().split()[0])
+    uname = subprocess.check_output(["uname", "-a"], text=True).strip()
+    print(json.dumps({
+        "ok": True,
+        "data": {
+            "uptimeSec": uptime,
+            "memory": read_mem(),
+            "cpu": read_load(),
+            "disk": read_disk(),
+            "uname": uname,
+        }
+    }, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)

@@ -1,0 +1,59 @@
+{
+  "name": "wgcontrol",
+  "private": true,
+  "description": "wgcontrol (wireguard-control) — localhost WireGuard multi-VPS management dashboard",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev --host 127.0.0.1",
+    "preview": "nuxt preview --host 127.0.0.1",
+    "postinstall": "nuxt prepare",
+    "lint": "eslint .",
+    "typecheck": "nuxt typecheck",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@iconify-json/lucide": "^1.2.150",
+    "@iconify-json/simple-icons": "^1.2.101",
+    "@internationalized/date": "^3.12.4",
+    "@libsql/client": "^0.18.0",
+    "@nuxt/ui": "^4.12.0",
+    "@tanstack/charts": "^1.1.0",
+    "@tanstack/table-core": "^8.21.3",
+    "@vueuse/core": "^14.4.0",
+    "@vueuse/nuxt": "^14.4.0",
+    "bcryptjs": "^3.0.3",
+    "date-fns": "^4.4.0",
+    "drizzle-orm": "^1.0.0-rc.5",
+    "nuxt": "^4.6.4",
+    "qrcode": "^1.5.4",
+    "scule": "^1.3.0",
+    "ssh2": "^1.17.0",
+    "tailwindcss": "^4.3.3",
+    "vue": "^3.5.44",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "^1.17.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/qrcode": "^1.5.6",
+    "@types/ssh2": "^1.15.6",
+    "drizzle-kit": "^1.0.0-rc.5",
+    "eslint": "^10.14.0",
+    "eslint-plugin-better-tailwindcss": "^4.10.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0",
+    "vue-tsc": "^3.3.14"
+  },
+  "allowScripts": {
+    "esbuild@0.27.2": true,
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true,
+    "vue-demi@0.14.10": true,
+    "ssh2@1.17.0": true
+  }
+}

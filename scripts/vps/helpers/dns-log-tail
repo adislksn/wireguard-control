@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Incremental DNS log reader with byte cursor."""
+import json
+import os
+import sys
+
+DEFAULT_LOG = "/var/log/wgcontrol/dns.log"
+
+
+def main():
+    payload = json.loads(sys.stdin.read() or "{}")
+    path = payload.get("path") or DEFAULT_LOG
+    cursor = int(payload.get("cursor") or 0)
+    inode = payload.get("inode")
+
+    if not os.path.exists(path):
+        print(json.dumps({"ok": True, "data": {"lines": [], "cursor": 0, "inode": None, "rotated": False}}))
+        return
+
+    st = os.stat(path)
+    rotated = False
+    if inode is not None and int(inode) != st.st_ino:
+        rotated = True
+        cursor = 0
+    if cursor > st.st_size:
+        # truncated
+        rotated = True
+        cursor = 0
+
+    with open(path, "r", errors="replace") as f:
+        f.seek(cursor)
+        chunk = f.read()
+        new_cursor = f.tell()
+
+    lines = [ln for ln in chunk.splitlines() if ln.strip()]
+    print(json.dumps({
+        "ok": True,
+        "data": {
+            "lines": lines,
+            "cursor": new_cursor,
+            "inode": st.st_ino,
+            "rotated": rotated,
+            "size": st.st_size,
+        }
+    }, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)

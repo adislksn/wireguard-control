@@ -1,0 +1,68 @@
+export type Period = 'daily' | 'weekly' | 'monthly'
+
+export interface Range {
+  start: Date
+  end: Date
+}
+
+export interface VpsHost {
+  id: number
+  name: string
+  host: string
+  sshPort: number
+  sshUser: string
+  authType: string
+  hasPrivateKey: boolean
+  hostFingerprint: string | null
+  wgInterface: string | null
+  wgSubnet: string | null
+  serverVpnIp: string | null
+  listenPort: number | null
+  status: 'unknown' | 'reachable' | 'no_wireguard' | 'ready' | 'error'
+  lastError: string | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PeerRow {
+  id: number
+  deviceName: string
+  deviceType: string | null
+  description: string | null
+  vpnIp: string
+  publicKey: string
+  publicKeyMasked: string
+  createdAt: string
+  revokedAt: string | null
+  isActive: boolean
+  latestHandshake: string | null
+  rxBytes: number
+  txBytes: number
+}
+
+export interface DashboardOverview {
+  vps: VpsHost | null
+  totals: {
+    peers: number
+    activePeers: number
+    recentlyActive?: number
+    rxBytes: number
+    txBytes: number
+    dnsToday: number
+  }
+  health: {
+    memory?: { usedPercent: number, used: number, total: number }
+    cpu?: { load1: number }
+    disk?: { usedPercent: number }
+    uptimeSec?: number
+  } | null
+  recentAudit: Array<{
+    id: number
+    timestamp: string
+    action: string
+    result: string
+    detail: string | null
+  }>
+  connection: string
+}

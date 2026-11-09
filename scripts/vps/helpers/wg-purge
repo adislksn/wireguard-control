@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+import json
+import os
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+
+def sh(cmd, check=False):
+    return subprocess.run(cmd, capture_output=True, text=True, check=check)
+
+
+def main():
+    if os.geteuid() != 0:
+        print(json.dumps({"ok": False, "error": "root required"}))
+        sys.exit(1)
+    payload = json.loads(sys.stdin.read() or "{}")
+    if payload.get("confirm") != "DELETE WIREGUARD":
+        print(json.dumps({"ok": False, "error": "confirmation mismatch"}))
+        sys.exit(2)
+
+    iface = payload.get("interfaceName") or "wg0"
+    listen_port = int(payload.get("listenPort") or 51820)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    bak = f"/root/wgcontrol-backups/purge-{ts}"
+    os.makedirs(bak, mode=0o700, exist_ok=True)
+    for path in ["/etc/wireguard", "/var/lib/wg-monitor", "/var/lib/wgcontrol", "/etc/dnsmasq.d/wgcontrol.conf"]:
+        if os.path.exists(path):
+            dest = os.path.join(bak, os.path.basename(path.rstrip("/")))
+            if os.path.isdir(path):
+                shutil.copytree(path, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(path, dest)
+
+    sh(["systemctl", "stop", f"wg-quick@{iface}"])
+    sh(["systemctl", "disable", f"wg-quick@{iface}"])
+    sh(["systemctl", "stop", "wg-monitor.timer"])
+    sh(["systemctl", "disable", "wg-monitor.timer"])
+    sh(["systemctl", "stop", "dnsmasq"])
+    for unit in [
+        "/etc/systemd/system/wg-monitor.service",
+        "/etc/systemd/system/wg-monitor.timer",
+        "/etc/dnsmasq.d/wgcontrol.conf",
+        "/etc/sysctl.d/99-wgcontrol-forward.conf",
+    ]:
+        if os.path.exists(unit):
+            os.remove(unit)
+    sh(["systemctl", "daemon-reload"])
+
+    if os.path.isdir("/etc/wireguard"):
+        shutil.rmtree("/etc/wireguard")
+    if os.path.isdir("/var/lib/wg-monitor"):
+        shutil.rmtree("/var/lib/wg-monitor")
+    if shutil.which("ufw"):
+        sh(["ufw", "delete", "allow", f"{listen_port}/udp"])
+
+    print(json.dumps({"ok": True, "data": {"backup": bak, "interface": iface}}, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)

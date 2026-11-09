@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+import time
+
+
+TEMPLATE = """# Managed by wgcontrol
+interface={iface}
+listen-address={ip}
+bind-interfaces
+no-resolv
+server={upstream}
+log-queries
+log-facility=/var/log/wgcontrol/dns.log
+log-async=25
+domain-needed
+bogus-priv
+cache-size=1000
+"""
+
+
+def main():
+    if os.geteuid() != 0:
+        print(json.dumps({"ok": False, "error": "root required"}))
+        sys.exit(1)
+    payload = json.loads(sys.stdin.read() or "{}")
+    iface = payload.get("interface") or "wg0"
+    ip = payload.get("serverVpnIp") or "10.7.0.1"
+    upstream = payload.get("upstreamDns") or "1.1.1.1"
+
+    # conflict check: anything bound on :53 besides systemd-resolved localhost
+    ss = subprocess.run(["ss", "-tulpn"], capture_output=True, text=True)
+    public_53 = []
+    for line in ss.stdout.splitlines():
+        if ":53 " in line or ":53\n" in line or line.rstrip().endswith(":53"):
+            if "127.0.0." in line or "::1" in line:
+                continue
+            if iface in line or ip in line:
+                continue
+            public_53.append(line.strip())
+    # Installing dnsmasq that binds only to WG IP is OK even if resolved owns 127.0.0.53
+
+    subprocess.run(
+        ["apt-get", "install", "-y", "dnsmasq"],
+        env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"},
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    os.makedirs("/var/log/wgcontrol", mode=0o755, exist_ok=True)
+    open("/var/log/wgcontrol/dns.log", "a").close()
+    os.makedirs("/etc/dnsmasq.d", exist_ok=True)
+
+    # Disable dnsmasq default listening-all if present
+    default = "/etc/default/dnsmasq"
+    if os.path.exists(default):
+        text = open(default).read()
+        if "IGNORE_RESOLVCONF" not in text:
+            open(default, "a").write("\nIGNORE_RESOLVCONF=yes\n")
+
+    conf_path = "/etc/dnsmasq.d/wgcontrol.conf"
+    open(conf_path, "w").write(TEMPLATE.format(iface=iface, ip=ip, upstream=upstream))
+
+    # logrotate
+    open("/etc/logrotate.d/wgcontrol-dns", "w").write(
+        "/var/log/wgcontrol/dns.log {\n  weekly\n  rotate 4\n  missingok\n  notifempty\n  compress\n  delaycompress\n  copytruncate\n}\n"
+    )
+
+    # Allow DNS only from the WireGuard interface (UFW default deny would block clients otherwise)
+    if os.path.exists("/usr/sbin/ufw") or os.path.exists("/usr/bin/ufw"):
+        subprocess.run(["ufw", "allow", "in", "on", iface, "to", "any", "port", "53", "proto", "udp"], check=False, capture_output=True, text=True)
+        subprocess.run(["ufw", "allow", "in", "on", iface, "to", "any", "port", "53", "proto", "tcp"], check=False, capture_output=True, text=True)
+
+    subprocess.run(["systemctl", "enable", "dnsmasq"], check=False)
+    restart = subprocess.run(["systemctl", "restart", "dnsmasq"], capture_output=True, text=True)
+    if restart.returncode != 0:
+        print(json.dumps({"ok": False, "error": restart.stderr.strip() or "dnsmasq restart failed", "conflicts": public_53}))
+        sys.exit(1)
+
+    print(json.dumps({
+        "ok": True,
+        "data": {
+            "interface": iface,
+            "listenAddress": ip,
+            "upstreamDns": upstream,
+            "logPath": "/var/log/wgcontrol/dns.log",
+            "publicConflictsIgnored": public_53,
+            "ufwDnsOnWg": True,
+        }
+    }, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)

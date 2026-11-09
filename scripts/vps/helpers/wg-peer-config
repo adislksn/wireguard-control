@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""Retrieve a stored client .conf by public key. Never logs private key material to stderr."""
+import json
+import os
+import re
+import sys
+
+CLIENTS_DIR = "/var/lib/wgcontrol/clients"
+
+
+def client_path(public_key: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", public_key.rstrip("="))
+    return os.path.join(CLIENTS_DIR, f"{safe}.conf")
+
+
+def main():
+    if os.geteuid() != 0:
+        print(json.dumps({"ok": False, "error": "root required"}))
+        sys.exit(1)
+
+    payload = json.loads(sys.stdin.read() or "{}")
+    public_key = payload.get("publicKey") or ""
+    if not re.fullmatch(r"[A-Za-z0-9+/]{42,44}=", public_key):
+        print(json.dumps({"ok": False, "error": "invalid public key"}))
+        sys.exit(2)
+
+    path = client_path(public_key)
+    if not os.path.exists(path):
+        print(json.dumps({
+            "ok": False,
+            "error": "client config not found (peer may predate config storage; revoke and recreate)"
+        }))
+        sys.exit(3)
+
+    conf = open(path).read()
+    if "PrivateKey" not in conf:
+        print(json.dumps({"ok": False, "error": "invalid stored config"}))
+        sys.exit(1)
+
+    print(json.dumps({"ok": True, "data": {"clientConfig": conf, "publicKey": public_key}}, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)

@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+import json
+import os
+import re
+import subprocess
+import sys
+
+BEGIN = "# BEGIN_PEER "
+END = "# END_PEER "
+
+
+def main():
+    if os.geteuid() != 0:
+        print(json.dumps({"ok": False, "error": "root required"}))
+        sys.exit(1)
+
+    payload = json.loads(sys.stdin.read() or "{}")
+    name = payload.get("name") or ""
+    public_key = payload.get("publicKey") or ""
+    iface = payload.get("interface") or "wg0"
+    if not name or not public_key:
+        print(json.dumps({"ok": False, "error": "name and publicKey required"}))
+        sys.exit(2)
+    if not re.fullmatch(r"[A-Za-z0-9+/]{42,44}=", public_key):
+        print(json.dumps({"ok": False, "error": "invalid public key"}))
+        sys.exit(2)
+
+    conf_path = f"/etc/wireguard/{iface}.conf"
+    conf = open(conf_path).read()
+    start = f"{BEGIN}{name}"
+    end = f"{END}{name}"
+    if start not in conf or end not in conf:
+        print(json.dumps({"ok": False, "error": "peer block not found"}))
+        sys.exit(2)
+
+    # Verify public key matches block
+    block_match = re.search(re.escape(start) + r"([\s\S]*?)" + re.escape(end), conf)
+    if not block_match or public_key not in block_match.group(0):
+        print(json.dumps({"ok": False, "error": "peer name/public key mismatch"}))
+        sys.exit(2)
+
+    # Live remove
+    subprocess.run(["wg", "set", iface, "peer", public_key, "remove"], check=False)
+
+    lines = conf.splitlines()
+    out = []
+    skipping = False
+    for line in lines:
+        if line == start:
+            skipping = True
+            continue
+        if skipping:
+            if line == end:
+                skipping = False
+            continue
+        out.append(line)
+    new_conf = "\n".join(out).rstrip() + "\n"
+    open(conf_path + ".bak", "w").write(conf)
+    open(conf_path, "w").write(new_conf)
+    os.chmod(conf_path, 0o600)
+
+    # Remove stored client config if present
+    clients_dir = "/var/lib/wgcontrol/clients"
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", public_key.rstrip("="))
+    conf_file = os.path.join(clients_dir, f"{safe}.conf")
+    if os.path.exists(conf_file):
+        os.remove(conf_file)
+    index_path = os.path.join(clients_dir, "index.json")
+    if os.path.exists(index_path):
+        try:
+            index = json.load(open(index_path))
+            if isinstance(index, dict) and public_key in index:
+                del index[public_key]
+                open(index_path, "w").write(json.dumps(index) + "\n")
+                os.chmod(index_path, 0o600)
+        except Exception:
+            pass
+
+    print(json.dumps({"ok": True, "data": {"name": name, "publicKey": public_key}}, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)

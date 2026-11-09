@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""Add a peer using Nyr BEGIN_PEER/END_PEER markers. Saves client config for later retrieval."""
+import json
+import os
+import re
+import subprocess
+import sys
+
+BEGIN = "# BEGIN_PEER "
+END = "# END_PEER "
+CLIENTS_DIR = "/var/lib/wgcontrol/clients"
+
+
+def sh(cmd, input=None, check=True):
+    return subprocess.run(cmd, input=input, capture_output=True, text=True, check=check)
+
+
+def parse_used_ips(conf_text):
+    ips = []
+    for m in re.finditer(r"AllowedIPs\s*=\s*([0-9.]+)", conf_text):
+        ips.append(m.group(1))
+    return ips
+
+
+def ipv4_to_int(ip):
+    a, b, c, d = [int(x) for x in ip.split(".")]
+    return (a << 24) | (b << 16) | (c << 8) | d
+
+
+def int_to_ipv4(n):
+    return f"{(n >> 24) & 255}.{(n >> 16) & 255}.{(n >> 8) & 255}.{n & 255}"
+
+
+def allocate_ip(subnet, server_ip, used):
+    base, prefix = subnet.split("/")
+    prefix = int(prefix)
+    base_n = ipv4_to_int(base)
+    mask = (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF
+    network = base_n & mask
+    broadcast = network | (~mask & 0xFFFFFFFF)
+    reserved = {network, broadcast, ipv4_to_int(server_ip)} | {ipv4_to_int(x) for x in used}
+    for cand in range(network + 1, broadcast):
+        if cand not in reserved:
+            return int_to_ipv4(cand)
+    raise RuntimeError("No free IPs")
+
+
+def server_public_key(iface):
+    return sh(["wg", "show", iface, "public-key"]).stdout.strip()
+
+
+def endpoint_host():
+    out = sh(["bash", "-lc", "ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i==\"src\") print $(i+1)}'"]).stdout.strip()
+    if out:
+        return out
+    return sh(["hostname", "-I"]).stdout.split()[0]
+
+
+def valid_name(name: str) -> bool:
+    return bool(re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9 ._@+-]*", name or "")) and not re.search(r"[`$;|&<>\\]", name or "")
+
+
+def client_path(public_key: str) -> str:
+    # filesystem-safe key id
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", public_key.rstrip("="))
+    return os.path.join(CLIENTS_DIR, f"{safe}.conf")
+
+
+def main():
+    if os.geteuid() != 0:
+        print(json.dumps({"ok": False, "error": "root required"}))
+        sys.exit(1)
+
+    payload = json.loads(sys.stdin.read() or "{}")
+    name = (payload.get("name") or "").strip()
+    if not valid_name(name):
+        print(json.dumps({"ok": False, "error": "invalid peer name"}))
+        sys.exit(2)
+
+    iface = payload.get("interface") or "wg0"
+    subnet = payload.get("wgSubnet") or "10.7.0.0/24"
+    server_ip = payload.get("serverVpnIp") or "10.7.0.1"
+    listen_port = int(payload.get("listenPort") or 51820)
+    dns = payload.get("dns") or server_ip
+    conf_path = f"/etc/wireguard/{iface}.conf"
+    if not os.path.exists(conf_path):
+        print(json.dumps({"ok": False, "error": "missing wg conf"}))
+        sys.exit(1)
+
+    conf = open(conf_path).read()
+    if f"{BEGIN}{name}" in conf:
+        print(json.dumps({"ok": False, "error": "peer name exists"}))
+        sys.exit(2)
+
+    client_priv = sh(["wg", "genkey"]).stdout.strip()
+    client_pub = sh(["wg", "pubkey"], input=client_priv + "\n").stdout.strip()
+    psk = sh(["wg", "genpsk"]).stdout.strip()
+    used = parse_used_ips(conf)
+    vpn_ip = allocate_ip(subnet, server_ip, used)
+    allowed = f"{vpn_ip}/32"
+
+    block = "\n".join([
+        f"{BEGIN}{name}",
+        "[Peer]",
+        f"PublicKey = {client_pub}",
+        f"PresharedKey = {psk}",
+        f"AllowedIPs = {allowed}",
+        f"{END}{name}",
+        "",
+    ])
+
+    bak = conf_path + ".bak"
+    open(bak, "w").write(conf)
+    open(conf_path, "w").write(conf.rstrip() + "\n\n" + block)
+    os.chmod(conf_path, 0o600)
+
+    apply = sh(
+        ["wg", "set", iface, "peer", client_pub, "preshared-key", "/dev/stdin", "allowed-ips", allowed],
+        input=psk + "\n",
+        check=False,
+    )
+    if apply.returncode != 0:
+        open(conf_path, "w").write(conf)
+        print(json.dumps({"ok": False, "error": apply.stderr.strip() or "wg set failed"}))
+        sys.exit(1)
+
+    server_pub = server_public_key(iface)
+    host = endpoint_host()
+    client_conf = f"""[Interface]
+PrivateKey = {client_priv}
+Address = {vpn_ip}/24
+DNS = {dns}
+
+[Peer]
+PublicKey = {server_pub}
+PresharedKey = {psk}
+Endpoint = {host}:{listen_port}
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25
+"""
+
+    os.makedirs(CLIENTS_DIR, mode=0o700, exist_ok=True)
+    path = client_path(client_pub)
+    with open(path, "w") as f:
+        f.write(client_conf)
+    os.chmod(path, 0o600)
+    # index by name for convenience
+    with open(os.path.join(CLIENTS_DIR, "index.json"), "a+") as f:
+        f.seek(0)
+        try:
+            index = json.load(f)
+        except Exception:
+            index = {}
+        if not isinstance(index, dict):
+            index = {}
+        index[client_pub] = {"name": name, "path": path, "vpnIp": vpn_ip}
+        f.seek(0)
+        f.truncate()
+        json.dump(index, f)
+        f.write("\n")
+    os.chmod(os.path.join(CLIENTS_DIR, "index.json"), 0o600)
+
+    print(json.dumps({
+        "ok": True,
+        "data": {
+            "name": name,
+            "publicKey": client_pub,
+            "vpnIp": vpn_ip,
+            "allowedIps": allowed,
+            "clientConfig": client_conf,
+            "configStored": True,
+        }
+    }, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)

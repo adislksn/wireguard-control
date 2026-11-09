@@ -1,0 +1,14 @@
+# Managed by wgcontrol — DNS only on WireGuard interface
+# Do NOT listen on public interfaces.
+interface={{WG_INTERFACE}}
+listen-address={{SERVER_VPN_IP}}
+bind-interfaces
+no-resolv
+server={{UPSTREAM_DNS}}
+log-queries
+log-facility=/var/log/wgcontrol/dns.log
+# Avoid excessive syslog duplication
+log-async=25
+domain-needed
+bogus-priv
+cache-size=1000

@@ -1,0 +1,13 @@
+[Unit]
+Description=WireGuard peer stats collector (oneshot)
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/wgcontrol/wg-monitor-collect
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+MemoryMax=32M
+CPUQuota=10%

@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""Rewrite DNS= lines in stored client WireGuard configs."""
+import json
+import os
+import re
+import sys
+
+CLIENTS_DIR = "/var/lib/wgcontrol/clients"
+DNS_RE = re.compile(r"(?im)^DNS\s*=\s*.*$")
+
+
+def main():
+    if os.geteuid() != 0:
+        print(json.dumps({"ok": False, "error": "root required"}))
+        sys.exit(1)
+
+    payload = json.loads(sys.stdin.read() or "{}")
+    dns = (payload.get("dns") or "").strip()
+    if not dns or not re.fullmatch(r"[0-9., ]+", dns):
+        print(json.dumps({"ok": False, "error": "invalid dns"}))
+        sys.exit(2)
+
+    updated = []
+    missing = []
+    if not os.path.isdir(CLIENTS_DIR):
+        print(json.dumps({"ok": True, "data": {"updated": [], "missing": [], "dns": dns}}))
+        return
+
+    for name in sorted(os.listdir(CLIENTS_DIR)):
+        if not name.endswith(".conf"):
+            continue
+        path = os.path.join(CLIENTS_DIR, name)
+        try:
+            text = open(path).read()
+        except OSError:
+            missing.append(name)
+            continue
+        if "PrivateKey" not in text:
+            missing.append(name)
+            continue
+        if DNS_RE.search(text):
+            new_text = DNS_RE.sub(f"DNS = {dns}", text, count=1)
+        else:
+            # Insert after Address= if present, else after [Interface]
+            if re.search(r"(?im)^Address\s*=", text):
+                new_text = re.sub(r"(?im)^(Address\s*=\s*.*)$", rf"\1\nDNS = {dns}", text, count=1)
+            else:
+                new_text = re.sub(r"(?im)^(\[Interface\])\s*$", rf"\1\nDNS = {dns}", text, count=1)
+        if new_text != text:
+            open(path, "w").write(new_text)
+            os.chmod(path, 0o600)
+            updated.append(name)
+
+    print(json.dumps({
+        "ok": True,
+        "data": {
+            "dns": dns,
+            "updated": updated,
+            "missing": missing,
+            "updatedCount": len(updated),
+        }
+    }, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)

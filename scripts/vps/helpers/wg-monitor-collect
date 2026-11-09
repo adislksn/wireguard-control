@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+
+DIR = "/var/lib/wg-monitor"
+LATEST = os.path.join(DIR, "latest.json")
+JSONL = os.path.join(DIR, "peers.jsonl")
+MAX_BYTES = 5 * 1024 * 1024
+
+
+def main():
+    payload = json.loads(sys.stdin.read() or "{}")
+    iface = payload.get("interface") or "wg0"
+    os.makedirs(DIR, mode=0o755, exist_ok=True)
+    proc = subprocess.run(["wg", "show", iface, "dump"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(json.dumps({"ok": False, "error": proc.stderr.strip() or "wg show failed"}, separators=(",", ":")))
+        sys.exit(1)
+
+    ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    lines = proc.stdout.strip().splitlines()
+    peers = []
+    if lines:
+        for line in lines[1:]:
+            p = line.split("\t")
+            peers.append({
+                "publicKey": p[0],
+                "allowedIps": p[3] if len(p) > 3 else "",
+                "latestHandshake": int(p[4] or 0),
+                "rxBytes": int(p[5] or 0),
+                "txBytes": int(p[6] or 0),
+                "timestamp": ts,
+            })
+
+    snapshot = {"interface": iface, "timestamp": ts, "peers": peers}
+    with open(LATEST, "w") as f:
+        json.dump(snapshot, f, separators=(",", ":"))
+        f.write("\n")
+
+    with open(JSONL, "a") as f:
+        for peer in peers:
+            f.write(json.dumps(peer, separators=(",", ":")) + "\n")
+
+    if os.path.exists(JSONL) and os.path.getsize(JSONL) > MAX_BYTES:
+        # retain last ~half by rewriting tail
+        with open(JSONL, "rb") as f:
+            f.seek(-MAX_BYTES // 2, os.SEEK_END)
+            data = f.read()
+        with open(JSONL, "wb") as f:
+            f.write(data.split(b"\n", 1)[-1])
+
+    print(json.dumps({"ok": True, "data": {"timestamp": ts, "peerCount": len(peers)}}, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)
