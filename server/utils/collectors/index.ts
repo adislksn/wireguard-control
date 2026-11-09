@@ -1,4 +1,4 @@
-import { and, eq, lt, sql } from 'drizzle-orm'
+import { and, eq, lt } from 'drizzle-orm'
 import { getDb } from '../../db'
 import { collectorCursors, dnsQueries, peerSnapshots, peers, vpsHosts } from '../../db/schema'
 import { parseDnsLogLines } from '../dns/parse'

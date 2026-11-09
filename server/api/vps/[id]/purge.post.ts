@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
   if (!vps) throw createError({ statusCode: 404, statusMessage: 'VPS not found' })
 
   const target = await buildSshTarget(vps)
-  const result = await runHelper<{ ok: boolean, data?: any, error?: string }>(target, 'wg-purge', {
+  const result = await runHelper<{ ok: boolean, data?: unknown, error?: string }>(target, 'wg-purge', {
     confirm: body.confirm,
     interfaceName: vps.wgInterface || 'wg0',
     listenPort: vps.listenPort || 51820
@@ -31,7 +31,8 @@ export default defineEventHandler(async (event) => {
     updatedAt: new Date().toISOString()
   }).where(eq(vpsHosts.id, id))
 
-  await writeAudit({ action: 'vps.purge', result: 'success', vpsId: id, detail: result.data.data })
+  const purge = (result.data.data ?? null) as Record<string, unknown> | null
+  await writeAudit({ action: 'vps.purge', result: 'success', vpsId: id, detail: purge })
   const refreshed = (await db.select().from(vpsHosts).where(eq(vpsHosts.id, id)))[0]!
-  return { vps: publicVpsView(refreshed), purge: result.data.data }
+  return { vps: publicVpsView(refreshed), purge }
 })

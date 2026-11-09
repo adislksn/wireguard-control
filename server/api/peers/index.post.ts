@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm'
 import { getDb } from '../../db'
 import { peers } from '../../db/schema'
 import { writeAudit } from '../../utils/audit'

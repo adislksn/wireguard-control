@@ -60,7 +60,7 @@ export async function upsertSshConfigAlias(alias: string, opts: {
 }) {
   const configPath = join(homedir(), '.ssh', 'config')
   await mkdir(join(homedir(), '.ssh'), { recursive: true, mode: 0o700 })
-  let existing = ''
+  let existing: string
   try {
     existing = await readFile(configPath, 'utf8')
   } catch {

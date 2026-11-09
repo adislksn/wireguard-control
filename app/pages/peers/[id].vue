@@ -13,7 +13,7 @@ const configOpen = ref(false)
 const configLoading = ref(false)
 const qr = ref<string | null>(null)
 
-const chartData = computed(() => (traffic.value || []).map((row: any) => ({
+const chartData = computed(() => (traffic.value || []).map((row: { timestamp: string, rxBytes: number, txBytes: number }) => ({
   date: formatLocalTime(row.timestamp),
   download: row.rxBytes,
   upload: row.txBytes
@@ -31,10 +31,10 @@ async function loadConfig() {
       body: { clientConfig: res.clientConfig }
     })
     qr.value = qrRes.dataUrl
-  } catch (e: any) {
+  } catch (e: unknown) {
     toast.add({
       title: 'Config unavailable',
-      description: e?.data?.statusMessage || e?.message,
+      description: (e as { data?: { statusMessage?: string } }).data?.statusMessage || (e as { message?: string }).message,
       color: 'warning'
     })
   } finally {
@@ -71,7 +71,12 @@ function downloadConfig() {
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
-          <UButton to="/peers" color="neutral" variant="ghost" label="Back" />
+          <UButton
+            to="/peers"
+            color="neutral"
+            variant="ghost"
+            label="Back"
+          />
           <UButton
             v-if="data?.peer?.isActive"
             icon="i-lucide-file-key"
@@ -81,7 +86,12 @@ function downloadConfig() {
             :loading="configLoading"
             @click="loadConfig"
           />
-          <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" @click="refresh()" />
+          <UButton
+            icon="i-lucide-refresh-cw"
+            color="neutral"
+            variant="ghost"
+            @click="refresh()"
+          />
         </template>
       </UDashboardNavbar>
     </template>
@@ -89,10 +99,34 @@ function downloadConfig() {
     <template #body>
       <div v-if="data?.peer" class="space-y-6">
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <UCard><p class="text-xs text-muted">VPN IP</p><p class="text-lg font-semibold">{{ data.peer.vpnIp }}</p></UCard>
-          <UCard><p class="text-xs text-muted">Download</p><p class="text-lg font-semibold">{{ formatBytes(data.latest?.rxBytes || 0) }}</p></UCard>
-          <UCard><p class="text-xs text-muted">Upload</p><p class="text-lg font-semibold">{{ formatBytes(data.latest?.txBytes || 0) }}</p></UCard>
-          <UCard><p class="text-xs text-muted">DNS queries</p><p class="text-lg font-semibold">{{ data.dnsQueryCount }}</p></UCard>
+          <UCard>
+            <p class="text-xs text-muted">
+              VPN IP
+            </p><p class="text-lg font-semibold">
+              {{ data.peer.vpnIp }}
+            </p>
+          </UCard>
+          <UCard>
+            <p class="text-xs text-muted">
+              Download
+            </p><p class="text-lg font-semibold">
+              {{ formatBytes(data.latest?.rxBytes || 0) }}
+            </p>
+          </UCard>
+          <UCard>
+            <p class="text-xs text-muted">
+              Upload
+            </p><p class="text-lg font-semibold">
+              {{ formatBytes(data.latest?.txBytes || 0) }}
+            </p>
+          </UCard>
+          <UCard>
+            <p class="text-xs text-muted">
+              DNS queries
+            </p><p class="text-lg font-semibold">
+              {{ data.dnsQueryCount }}
+            </p>
+          </UCard>
         </div>
 
         <UCard>
@@ -100,12 +134,38 @@ function downloadConfig() {
             Device
           </template>
           <dl class="grid gap-2 text-sm sm:grid-cols-2">
-            <div><dt class="text-muted">Type</dt><dd>{{ data.peer.deviceType }}</dd></div>
-            <div><dt class="text-muted">Created</dt><dd>{{ formatLocalTime(data.peer.createdAt) }}</dd></div>
-            <div><dt class="text-muted">Handshake</dt><dd>{{ formatLocalTime(data.latest?.latestHandshake) }}</dd></div>
-            <div><dt class="text-muted">Status</dt><dd>{{ data.peer.isActive ? 'active' : 'revoked' }}</dd></div>
-            <div class="sm:col-span-2"><dt class="text-muted">Public key</dt><dd class="font-mono break-all">{{ data.peer.publicKey }}</dd></div>
-            <div class="sm:col-span-2"><dt class="text-muted">Description</dt><dd>{{ data.peer.description || '—' }}</dd></div>
+            <div>
+              <dt class="text-muted">
+                Type
+              </dt><dd>{{ data.peer.deviceType }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted">
+                Created
+              </dt><dd>{{ formatLocalTime(data.peer.createdAt) }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted">
+                Handshake
+              </dt><dd>{{ formatLocalTime(data.latest?.latestHandshake) }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted">
+                Status
+              </dt><dd>{{ data.peer.isActive ? 'active' : 'revoked' }}</dd>
+            </div>
+            <div class="sm:col-span-2">
+              <dt class="text-muted">
+                Public key
+              </dt><dd class="font-mono break-all">
+                {{ data.peer.publicKey }}
+              </dd>
+            </div>
+            <div class="sm:col-span-2">
+              <dt class="text-muted">
+                Description
+              </dt><dd>{{ data.peer.description || '—' }}</dd>
+            </div>
           </dl>
         </UCard>
 
@@ -160,10 +220,21 @@ function downloadConfig() {
             <div v-if="qr" class="flex justify-center">
               <img :src="qr" alt="WireGuard QR code" class="rounded-lg border border-default">
             </div>
-            <UTextarea :model-value="clientConfig" readonly :rows="14" class="w-full font-mono text-xs" />
+            <UTextarea
+              :model-value="clientConfig"
+              readonly
+              :rows="14"
+              class="w-full font-mono text-xs"
+            />
             <div class="flex justify-end gap-2">
               <UButton label="Copy" icon="i-lucide-copy" @click="copyConfig" />
-              <UButton label="Download" icon="i-lucide-download" color="neutral" variant="outline" @click="downloadConfig" />
+              <UButton
+                label="Download"
+                icon="i-lucide-download"
+                color="neutral"
+                variant="outline"
+                @click="downloadConfig"
+              />
             </div>
           </div>
         </template>

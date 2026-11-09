@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
   const target = await buildSshTarget(vps)
   await deployHelpers(target)
 
-  const result = await runHelper<{ ok: boolean, data?: any, error?: string }>(target, 'wg-init', {
+  const result = await runHelper<{ ok: boolean, data?: unknown, error?: string }>(target, 'wg-init', {
     interfaceName: body.interfaceName,
     listenPort: body.listenPort,
     wgSubnet: body.wgSubnet,
@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 502, statusMessage: result.data?.error || result.stderr || 'init failed' })
   }
 
-  const dns = await runHelper<{ ok: boolean, data?: any, error?: string }>(target, 'dns-setup', {
+  const dns = await runHelper<{ ok: boolean, data?: unknown, error?: string }>(target, 'dns-setup', {
     interface: body.interfaceName,
     serverVpnIp: body.serverVpnIp,
     upstreamDns: body.upstreamDns
@@ -57,7 +57,7 @@ export default defineEventHandler(async (event) => {
     result: 'success',
     vpsId: id,
     detail: {
-      publicKey: result.data.data?.publicKey,
+      publicKey: (result.data.data as { publicKey?: string }).publicKey,
       listenPort: body.listenPort,
       dnsOk: Boolean(dns.data?.ok)
     }

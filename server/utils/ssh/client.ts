@@ -194,7 +194,7 @@ export async function runHelper<T = unknown>(
     // base64 payload avoids shell metacharacter issues; helper decodes JSON
     const command = `echo '${b64}' | base64 -d | ${helperPath}`
     const result = await execCommand(client, command, timeoutMs)
-    let data: T | null = null
+    let data: T | null
     try {
       data = JSON.parse(result.stdout.trim()) as T
     } catch {

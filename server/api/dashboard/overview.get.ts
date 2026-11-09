@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, sql } from 'drizzle-orm'
 import { getDb } from '../../db'
-import { adminAuditLogs, collectorCursors, dnsQueries, peerSnapshots, peers } from '../../db/schema'
+import { adminAuditLogs, collectorCursors, dnsQueries, peers } from '../../db/schema'
 import { getActiveVps, publicVpsView } from '../../utils/vps/target'
 
 export default defineEventHandler(async () => {
@@ -41,11 +41,13 @@ export default defineEventHandler(async () => {
   const healthRow = (await db.select().from(collectorCursors)
     .where(and(eq(collectorCursors.vpsId, vps.id), eq(collectorCursors.kind, 'health')))
     .limit(1))[0]
-  let health = null
-  try {
-    health = healthRow ? JSON.parse(healthRow.cursor) : null
-  } catch {
-    health = null
+  let health: unknown = null
+  if (healthRow) {
+    try {
+      health = JSON.parse(healthRow.cursor)
+    } catch {
+      health = null
+    }
   }
 
   const recentAudit = await db.select().from(adminAuditLogs)

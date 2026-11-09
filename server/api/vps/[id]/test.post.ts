@@ -23,13 +23,14 @@ export default defineEventHandler(async (event) => {
     await writeAudit({ action: 'vps.test', result: result.ok ? 'success' : 'failure', vpsId: id })
     const refreshed = (await db.select().from(vpsHosts).where(eq(vpsHosts.id, id)))[0]!
     return { ok: result.ok, stdout: result.stdout, vps: publicVpsView(refreshed) }
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
     await db.update(vpsHosts).set({
       status: 'error',
-      lastError: err?.message || String(err),
+      lastError: message,
       updatedAt: new Date().toISOString()
     }).where(eq(vpsHosts.id, id))
-    await writeAudit({ action: 'vps.test', result: 'failure', vpsId: id, detail: { error: err?.message } })
-    throw createError({ statusCode: 502, statusMessage: err?.message || 'SSH test failed' })
+    await writeAudit({ action: 'vps.test', result: 'failure', vpsId: id, detail: { error: message } })
+    throw createError({ statusCode: 502, statusMessage: message || 'SSH test failed' })
   }
 })

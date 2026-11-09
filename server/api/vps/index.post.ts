@@ -77,8 +77,8 @@ export default defineEventHandler(async (event) => {
         lastError: null,
         updatedAt: new Date().toISOString()
       }).where(eq(vpsHosts.id, vps.id))
-    } catch (err: any) {
-      bootstrapError = err?.message || String(err)
+    } catch (err: unknown) {
+      bootstrapError = (err as { message?: string }).message ?? String(err)
       await db.update(vpsHosts).set({
         status: 'error',
         lastError: bootstrapError,

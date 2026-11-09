@@ -4,13 +4,20 @@ const deviceName = ref('')
 const deviceType = ref<'phone' | 'tablet' | 'laptop' | 'desktop' | 'router' | 'other'>('phone')
 const description = ref('')
 const loading = ref(false)
-const result = ref<{ peer: any, clientConfig: string, vpnIp: string } | null>(null)
+type PeerCreateResponse = {
+  peer: { id: number }
+  clientConfig: string
+  vpnIp: string
+}
+
+const result = ref<PeerCreateResponse | null>(null)
 const qr = ref<string | null>(null)
 
 async function onSubmit() {
   loading.value = true
   try {
-    result.value = await $fetch('/api/peers', {
+    // Explicit response type avoids Nuxt InternalApi route-matcher recursion ("Excessive stack depth")
+    result.value = await $fetch<PeerCreateResponse>('/api/peers' as string, {
       method: 'POST',
       body: {
         deviceName: deviceName.value,
@@ -19,15 +26,16 @@ async function onSubmit() {
       }
     })
     if (result.value?.clientConfig) {
-      const qrRes = await $fetch<{ dataUrl: string }>(`/api/peers/${result.value.peer.id}/qr`, {
+      const peerId = result.value.peer.id
+      const qrRes = await $fetch<{ dataUrl: string }>(`/api/peers/${peerId}/qr` as string, {
         method: 'POST',
         body: { clientConfig: result.value.clientConfig }
       })
       qr.value = qrRes.dataUrl
     }
     toast.add({ title: 'Peer created', color: 'success' })
-  } catch (e: any) {
-    toast.add({ title: 'Failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Failed', description: (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? (e as { message?: string }).message, color: 'error' })
   } finally {
     loading.value = false
   }
@@ -59,7 +67,12 @@ async function copyConfig() {
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
-          <UButton to="/peers" color="neutral" variant="ghost" label="Back" />
+          <UButton
+            to="/peers"
+            color="neutral"
+            variant="ghost"
+            label="Back"
+          />
         </template>
       </UDashboardNavbar>
     </template>
@@ -68,7 +81,12 @@ async function copyConfig() {
       <div class="max-w-xl space-y-6">
         <form v-if="!result" class="space-y-4" @submit.prevent="onSubmit">
           <UFormField label="Device name" required>
-            <UInput v-model="deviceName" placeholder="Handphone Anak 1" class="w-full" required />
+            <UInput
+              v-model="deviceName"
+              placeholder="Handphone Anak 1"
+              class="w-full"
+              required
+            />
           </UFormField>
           <UFormField label="Device type">
             <USelect
@@ -92,11 +110,27 @@ async function copyConfig() {
           <div v-if="qr" class="flex justify-center">
             <img :src="qr" alt="WireGuard QR code" class="rounded-lg border border-default">
           </div>
-          <UTextarea :model-value="result.clientConfig" readonly :rows="10" class="w-full font-mono text-xs" />
+          <UTextarea
+            :model-value="result.clientConfig"
+            readonly
+            :rows="10"
+            class="w-full font-mono text-xs"
+          />
           <div class="flex gap-2">
             <UButton label="Copy .conf" icon="i-lucide-copy" @click="copyConfig" />
-            <UButton label="Download .conf" icon="i-lucide-download" color="neutral" variant="outline" @click="downloadConfig" />
-            <UButton label="View peer" :to="`/peers/${result.peer.id}`" color="neutral" variant="ghost" />
+            <UButton
+              label="Download .conf"
+              icon="i-lucide-download"
+              color="neutral"
+              variant="outline"
+              @click="downloadConfig"
+            />
+            <UButton
+              label="View peer"
+              :to="`/peers/${result.peer.id}`"
+              color="neutral"
+              variant="ghost"
+            />
           </div>
           <ol class="text-sm text-muted list-decimal ps-5 space-y-1">
             <li>Install the WireGuard app on Android or iOS.</li>

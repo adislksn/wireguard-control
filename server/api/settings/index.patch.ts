@@ -27,8 +27,8 @@ export default defineEventHandler(async (event) => {
           peerDnsSync = { error: result.data?.error || result.stderr || 'dns sync failed' }
         }
       }
-    } catch (err: any) {
-      peerDnsSync = { error: err?.message || 'dns sync failed' }
+    } catch (err: unknown) {
+      peerDnsSync = { error: (err as { message?: string }).message ?? 'DNS sync failed' }
     }
   }
 

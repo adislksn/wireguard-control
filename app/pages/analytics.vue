@@ -7,7 +7,7 @@ const { data, refresh, status } = await useFetch(() => `/api/analytics/traffic?d
   default: () => ({ series: [], byPeer: [] })
 })
 
-const chartData = computed(() => (data.value?.series || []).map((row: any) => ({
+const chartData = computed(() => (data.value?.series || []).map((row: { date: string, rxBytes: number, txBytes: number }) => ({
   date: row.date,
   download: Number(row.rxBytes || 0),
   upload: Number(row.txBytes || 0)
@@ -34,7 +34,13 @@ const dayItems = [
             value-key="value"
             class="w-36"
           />
-          <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" :loading="status === 'pending'" @click="refresh()" />
+          <UButton
+            icon="i-lucide-refresh-cw"
+            color="neutral"
+            variant="ghost"
+            :loading="status === 'pending'"
+            @click="refresh()"
+          />
         </template>
       </UDashboardNavbar>
     </template>

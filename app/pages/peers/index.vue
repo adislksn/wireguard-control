@@ -60,10 +60,10 @@ async function copyPeerConfig(peer: PeerRow) {
     const res = await $fetch<{ clientConfig: string }>(`/api/peers/${peer.id}/config`)
     await navigator.clipboard.writeText(res.clientConfig)
     toast.add({ title: `Copied ${peer.deviceName}.conf`, color: 'success' })
-  } catch (e: any) {
+  } catch (e: unknown) {
     toast.add({
       title: 'Config unavailable',
-      description: e?.data?.statusMessage || e?.message,
+      description: (e as { data?: { statusMessage?: string } }).data?.statusMessage || (e as { message?: string }).message,
       color: 'warning'
     })
   }
@@ -78,8 +78,19 @@ async function copyPeerConfig(peer: PeerRow) {
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
-          <UButton color="neutral" variant="ghost" :label="showKeys ? 'Mask keys' : 'Show keys'" @click="showKeys = !showKeys" />
-          <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" :loading="status === 'pending'" @click="refresh()" />
+          <UButton
+            color="neutral"
+            variant="ghost"
+            :label="showKeys ? 'Mask keys' : 'Show keys'"
+            @click="showKeys = !showKeys"
+          />
+          <UButton
+            icon="i-lucide-refresh-cw"
+            color="neutral"
+            variant="ghost"
+            :loading="status === 'pending'"
+            @click="refresh()"
+          />
           <UButton icon="i-lucide-plus" label="Add peer" to="/peers/add" />
         </template>
       </UDashboardNavbar>
@@ -94,7 +105,13 @@ async function copyPeerConfig(peer: PeerRow) {
       >
         <template #actions-cell="{ row }">
           <div class="flex justify-end gap-1">
-            <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-eye" :to="`/peers/${row.original.id}`" />
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-eye"
+              :to="`/peers/${row.original.id}`"
+            />
             <UButton
               size="xs"
               color="neutral"
@@ -125,8 +142,18 @@ async function copyPeerConfig(peer: PeerRow) {
             Revoke <strong>{{ revokeTarget?.deviceName }}</strong> ({{ revokeTarget?.vpnIp }})?
           </p>
           <div class="flex justify-end gap-2">
-            <UButton label="Cancel" color="neutral" variant="subtle" @click="revokeOpen = false" />
-            <UButton label="Revoke" color="error" loading-auto @click="revokePeer" />
+            <UButton
+              label="Cancel"
+              color="neutral"
+              variant="subtle"
+              @click="revokeOpen = false"
+            />
+            <UButton
+              label="Revoke"
+              color="error"
+              loading-auto
+              @click="revokePeer"
+            />
           </div>
         </template>
       </UModal>

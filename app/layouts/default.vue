@@ -58,8 +58,8 @@ async function activateVps(id: number) {
     await $fetch(`/api/vps/${id}/activate`, { method: 'POST' })
     await refreshVps()
     toast.add({ title: 'Active VPS switched', color: 'success' })
-  } catch (e: any) {
-    toast.add({ title: 'Switch failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Switch failed', description: (e as { data?: { statusMessage?: string } }).data?.statusMessage || (e as { message?: string }).message, color: 'error' })
   }
 }
 
@@ -115,7 +115,13 @@ async function onLogout() {
             <p class="text-sm truncate">
               {{ user?.username }}
             </p>
-            <UButton size="xs" color="neutral" variant="ghost" label="Logout" @click="onLogout" />
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              label="Logout"
+              @click="onLogout"
+            />
           </div>
         </div>
       </template>

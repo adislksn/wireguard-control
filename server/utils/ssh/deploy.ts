@@ -72,6 +72,7 @@ export async function deployHelpers(target: SshTarget) {
 
 export async function installAuthorizedKey(target: SshTarget, publicKeyLine: string) {
   return withSshConnection(target, async (client, hostFingerprint) => {
+    // eslint-disable-next-line no-useless-escape
     const escaped = publicKeyLine.trim().replace(/'/g, `'\"'\"'`)
     const script = `
 set -e

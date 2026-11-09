@@ -44,8 +44,8 @@ async function addVps() {
     } else {
       toast.add({ title: 'VPS added', color: 'success' })
     }
-  } catch (e: any) {
-    toast.add({ title: 'Failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Failed', description: (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? (e as { message?: string }).message, color: 'error' })
   } finally {
     busy.value = false
   }
@@ -63,8 +63,8 @@ async function testConn(id: number) {
     await $fetch(`/api/vps/${id}/test`, { method: 'POST' })
     await refreshVps()
     toast.add({ title: 'SSH OK', color: 'success' })
-  } catch (e: any) {
-    toast.add({ title: 'SSH failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'SSH failed', description: (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? (e as { message?: string }).message, color: 'error' })
     await refreshVps()
   } finally {
     busy.value = false
@@ -77,8 +77,8 @@ async function initWg(id: number) {
     await $fetch(`/api/vps/${id}/init`, { method: 'POST', body: { ...initForm } })
     await refreshVps()
     toast.add({ title: 'WireGuard initialized', color: 'success' })
-  } catch (e: any) {
-    toast.add({ title: 'Init failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Init failed', description: (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? (e as { message?: string }).message, color: 'error' })
   } finally {
     busy.value = false
   }
@@ -95,8 +95,8 @@ async function purgeWg(id: number) {
     purgeConfirm.value = ''
     await refreshVps()
     toast.add({ title: 'WireGuard removed', color: 'success' })
-  } catch (e: any) {
-    toast.add({ title: 'Purge failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Purge failed', description: (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? (e as { message?: string }).message, color: 'error' })
   } finally {
     busy.value = false
   }
@@ -134,7 +134,12 @@ async function saveSettings() {
               <div>
                 <p class="font-medium">
                   {{ vps.name }}
-                  <UBadge v-if="vps.isActive" color="success" variant="subtle" class="ms-2">
+                  <UBadge
+                    v-if="vps.isActive"
+                    color="success"
+                    variant="subtle"
+                    class="ms-2"
+                  >
                     active
                   </UBadge>
                 </p>
@@ -146,10 +151,35 @@ async function saveSettings() {
                 </p>
               </div>
               <div class="flex flex-wrap gap-2">
-                <UButton size="xs" label="Activate" :disabled="vps.isActive" @click="activate(vps.id)" />
-                <UButton size="xs" color="neutral" variant="outline" label="Test SSH" :loading="busy" @click="testConn(vps.id)" />
-                <UButton size="xs" color="primary" variant="soft" label="Init WG" :loading="busy" @click="selectedId = vps.id; initWg(vps.id)" />
-                <UButton size="xs" color="error" variant="ghost" label="Select for purge" @click="selectedId = vps.id" />
+                <UButton
+                  size="xs"
+                  label="Activate"
+                  :disabled="vps.isActive"
+                  @click="activate(vps.id)"
+                />
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="outline"
+                  label="Test SSH"
+                  :loading="busy"
+                  @click="testConn(vps.id)"
+                />
+                <UButton
+                  size="xs"
+                  color="primary"
+                  variant="soft"
+                  label="Init WG"
+                  :loading="busy"
+                  @click="selectedId = vps.id; initWg(vps.id)"
+                />
+                <UButton
+                  size="xs"
+                  color="error"
+                  variant="ghost"
+                  label="Select for purge"
+                  @click="selectedId = vps.id"
+                />
               </div>
             </div>
             <p v-if="!(vpsList || []).length" class="text-sm text-muted">
@@ -171,7 +201,12 @@ async function saveSettings() {
               <UInput v-model="form.sshUser" class="w-full" />
             </UFormField>
             <UFormField label="Bootstrap password (optional)">
-              <UInput v-model="form.password" type="password" class="w-full" placeholder="Used once to install SSH key" />
+              <UInput
+                v-model="form.password"
+                type="password"
+                class="w-full"
+                placeholder="Used once to install SSH key"
+              />
             </UFormField>
             <UFormField label="Subnet">
               <UInput v-model="form.wgSubnet" class="w-full" />
@@ -190,11 +225,21 @@ async function saveSettings() {
             WireGuard init defaults
           </template>
           <div class="grid gap-3 sm:grid-cols-2">
-            <UFormField label="Listen port"><UInput v-model.number="initForm.listenPort" type="number" class="w-full" /></UFormField>
-            <UFormField label="Interface"><UInput v-model="initForm.interfaceName" class="w-full" /></UFormField>
-            <UFormField label="Subnet"><UInput v-model="initForm.wgSubnet" class="w-full" /></UFormField>
-            <UFormField label="Server IP"><UInput v-model="initForm.serverVpnIp" class="w-full" /></UFormField>
-            <UFormField label="Upstream DNS"><UInput v-model="initForm.upstreamDns" class="w-full" /></UFormField>
+            <UFormField label="Listen port">
+              <UInput v-model.number="initForm.listenPort" type="number" class="w-full" />
+            </UFormField>
+            <UFormField label="Interface">
+              <UInput v-model="initForm.interfaceName" class="w-full" />
+            </UFormField>
+            <UFormField label="Subnet">
+              <UInput v-model="initForm.wgSubnet" class="w-full" />
+            </UFormField>
+            <UFormField label="Server IP">
+              <UInput v-model="initForm.serverVpnIp" class="w-full" />
+            </UFormField>
+            <UFormField label="Upstream DNS">
+              <UInput v-model="initForm.upstreamDns" class="w-full" />
+            </UFormField>
             <UFormField label="Force re-init">
               <UCheckbox v-model="initForm.force" label="Overwrite existing WG after backup" />
             </UFormField>
@@ -210,7 +255,13 @@ async function saveSettings() {
           </p>
           <div class="flex flex-col sm:flex-row gap-2">
             <UInput v-model="purgeConfirm" class="w-full" placeholder="DELETE WIREGUARD" />
-            <UButton color="error" label="Purge WireGuard" :disabled="!selectedId" :loading="busy" @click="selectedId && purgeWg(selectedId)" />
+            <UButton
+              color="error"
+              label="Purge WireGuard"
+              :disabled="!selectedId"
+              :loading="busy"
+              @click="selectedId && purgeWg(selectedId)"
+            />
           </div>
         </UCard>
 

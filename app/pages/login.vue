@@ -20,8 +20,8 @@ async function onSubmit() {
   try {
     await login(username.value, password.value)
     await navigateTo('/')
-  } catch (e: any) {
-    error.value = e?.data?.statusMessage || e?.message || 'Login failed'
+  } catch (e: unknown) {
+    error.value = (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? (e as { message?: string }).message ?? 'Login failed'
   } finally {
     loading.value = false
   }
@@ -47,12 +47,22 @@ async function onSubmit() {
             <UInput v-model="username" autocomplete="username" class="w-full" />
           </UFormField>
           <UFormField label="Password">
-            <UInput v-model="password" type="password" autocomplete="current-password" class="w-full" />
+            <UInput
+              v-model="password"
+              type="password"
+              autocomplete="current-password"
+              class="w-full"
+            />
           </UFormField>
           <p v-if="error" class="text-sm text-error">
             {{ error }}
           </p>
-          <UButton type="submit" block :loading="loading" label="Sign in" />
+          <UButton
+            type="submit"
+            block
+            :loading="loading"
+            label="Sign in"
+          />
         </form>
       </UCard>
     </div>
