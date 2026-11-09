@@ -3,6 +3,7 @@
   "private": true,
   "description": "wgcontrol (wireguard-control) — localhost WireGuard multi-VPS management dashboard",
   "type": "module",
+  "version": "0.1.0",
   "license": "MIT",
   "scripts": {
     "build": "nuxt build",

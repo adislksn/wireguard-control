@@ -5,6 +5,7 @@ import type { VpsHost } from '~/types'
 const open = ref(false)
 const { user, logout } = useAuth()
 const toast = useToast()
+useDashboard()
 
 const { data: vpsList, refresh: refreshVps } = await useFetch<VpsHost[]>('/api/vps', {
   default: () => [],

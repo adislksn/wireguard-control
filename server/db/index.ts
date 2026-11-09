@@ -28,7 +28,8 @@ function ensureDataDir(url: string) {
 function createDb(url: string) {
   ensureDataDir(url)
   const client = createClient({ url })
-  return drizzle({ client, schema })
+  // drizzle-orm 1.0 uses `relations` (not legacy `schema`) on the client config
+  return drizzle({ client })
 }
 
 export async function getDb() {
