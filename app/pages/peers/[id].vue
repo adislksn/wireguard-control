@@ -12,6 +12,8 @@ const clientConfig = ref('')
 const configOpen = ref(false)
 const configLoading = ref(false)
 const qr = ref<string | null>(null)
+const clearDomainsOpen = ref(false)
+const clearDomainsLoading = ref(false)
 
 const chartData = computed(() => (traffic.value || []).map((row: { timestamp: string, rxBytes: number, txBytes: number }) => ({
   date: formatLocalTime(row.timestamp),
@@ -60,6 +62,31 @@ function downloadConfig() {
   a.download = `${data.value.peer.deviceName}.conf`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+async function clearDomainHistory() {
+  clearDomainsLoading.value = true
+  try {
+    const res = await $fetch<{ ok: boolean, deletedCount: number }>(`/api/peers/${id.value}/domains?confirm=1` as string, {
+      method: 'DELETE',
+      body: { confirm: true }
+    })
+    clearDomainsOpen.value = false
+    toast.add({
+      title: 'Domain history cleared',
+      description: `${res.deletedCount} DNS record${res.deletedCount === 1 ? '' : 's'} deleted`,
+      color: 'success'
+    })
+    await refresh()
+  } catch (e: unknown) {
+    toast.add({
+      title: 'Clear failed',
+      description: (e as { data?: { statusMessage?: string } }).data?.statusMessage || (e as { message?: string }).message,
+      color: 'error'
+    })
+  } finally {
+    clearDomainsLoading.value = false
+  }
 }
 </script>
 
@@ -193,7 +220,18 @@ function downloadConfig() {
 
         <UCard>
           <template #header>
-            Recent domains
+            <div class="flex items-center justify-between gap-3">
+              <span>Recent domains</span>
+              <UButton
+                v-if="(data.dnsQueryCount || 0) > 0"
+                size="xs"
+                color="error"
+                variant="soft"
+                icon="i-lucide-trash-2"
+                label="Clear history"
+                @click="clearDomainsOpen = true"
+              />
+            </div>
           </template>
           <UAlert
             class="mb-3"
@@ -213,6 +251,30 @@ function downloadConfig() {
           </p>
         </UCard>
       </div>
+
+      <UModal
+        v-model:open="clearDomainsOpen"
+        title="Clear domain history"
+        :description="`Delete all DNS lookup records for ${data?.peer?.deviceName || 'this peer'}? This cannot be undone.`"
+      >
+        <template #body>
+          <div class="flex justify-end gap-2">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              label="Cancel"
+              @click="clearDomainsOpen = false"
+            />
+            <UButton
+              color="error"
+              icon="i-lucide-trash-2"
+              label="Delete history"
+              :loading="clearDomainsLoading"
+              @click="clearDomainHistory"
+            />
+          </div>
+        </template>
+      </UModal>
 
       <UModal v-model:open="configOpen" title="Client configuration" description="Treat this like a secret. Anyone with this file can use the VPN as this device.">
         <template #body>

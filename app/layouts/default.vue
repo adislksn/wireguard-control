@@ -3,7 +3,6 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 import type { VpsHost } from '~/types'
 
 const open = ref(false)
-const { user, logout } = useAuth()
 const toast = useToast()
 useDashboard()
 
@@ -63,11 +62,6 @@ async function activateVps(id: number) {
     toast.add({ title: 'Switch failed', description: (e as { data?: { statusMessage?: string } }).data?.statusMessage || (e as { message?: string }).message, color: 'error' })
   }
 }
-
-async function onLogout() {
-  await logout()
-  await navigateTo('/login')
-}
 </script>
 
 <template>
@@ -110,21 +104,7 @@ async function onLogout() {
       </template>
 
       <template #footer="{ collapsed }">
-        <div class="flex items-center gap-2 px-2 py-2">
-          <UAvatar :alt="user?.username || 'admin'" size="xs" />
-          <div v-if="!collapsed" class="min-w-0 flex-1">
-            <p class="text-sm truncate">
-              {{ user?.username }}
-            </p>
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="ghost"
-              label="Logout"
-              @click="onLogout"
-            />
-          </div>
-        </div>
+        <UserMenu :collapsed="collapsed" />
       </template>
     </UDashboardSidebar>
 

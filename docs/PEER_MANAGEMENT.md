@@ -25,6 +25,12 @@ AllowedIPs = 10.7.0.x/32
 3. `wg set peer <key> remove` then delete only that marker block.
 4. Mark local peer `is_active=false` and write audit (no private keys).
 
+## Clear domain history
+
+1. Open the peer detail page → **Clear history**.
+2. Confirm. Deletes local `dns_queries` rows for that peer (by `peer_id` and matching VPN IP).
+3. Does not change WireGuard, client configs, or remote dnsmasq logs.
+
 ## Metadata
 
 Human-readable names live in local SQLite (`peers.device_name`), keyed by public key, not inside WireGuard private material.
