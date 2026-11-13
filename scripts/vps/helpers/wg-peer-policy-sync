@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""Write peer policy JSON used by the VPS enforcer timer."""
+import json
+import os
+import sys
+
+POLICY_PATH = "/var/lib/wgcontrol/peer-policies.json"
+
+
+def main():
+    if os.geteuid() != 0:
+        print(json.dumps({"ok": False, "error": "root required"}))
+        sys.exit(1)
+
+    payload = json.loads(sys.stdin.read() or "{}")
+    peers = payload.get("peers")
+    interface = payload.get("interface") or "wg0"
+    if not isinstance(peers, list):
+        print(json.dumps({"ok": False, "error": "peers array required"}))
+        sys.exit(2)
+
+    os.makedirs("/var/lib/wgcontrol", mode=0o755, exist_ok=True)
+    data = {
+        "interface": interface,
+        "updatedAt": payload.get("updatedAt"),
+        "peers": peers,
+    }
+    open(POLICY_PATH, "w").write(json.dumps(data, indent=2) + "\n")
+    os.chmod(POLICY_PATH, 0o600)
+
+    # Ensure policy timer is enabled
+    os.system("systemctl enable --now wg-peer-policy.timer >/dev/null 2>&1 || true")
+
+    print(json.dumps({
+        "ok": True,
+        "data": {
+            "path": POLICY_PATH,
+            "peerCount": len(peers),
+            "interface": interface,
+        }
+    }, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)

@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Unpause a peer: restore stashed conf block and re-add to live wg."""
+import json
+import os
+import re
+import subprocess
+import sys
+
+BEGIN = "# BEGIN_PEER "
+END = "# END_PEER "
+PAUSED_DIR = "/var/lib/wgcontrol/paused"
+
+
+def client_safe(public_key: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "_", public_key.rstrip("="))
+
+
+def wg_set_peer(iface: str, public_key: str, psk: str, allowed: str):
+    return subprocess.run(
+        ["wg", "set", iface, "peer", public_key, "preshared-key", "/dev/stdin", "allowed-ips", allowed],
+        input=psk + "\n",
+        capture_output=True,
+        text=True,
+    )
+
+
+def main():
+    if os.geteuid() != 0:
+        print(json.dumps({"ok": False, "error": "root required"}))
+        sys.exit(1)
+
+    payload = json.loads(sys.stdin.read() or "{}")
+    name = payload.get("name") or ""
+    public_key = payload.get("publicKey") or ""
+    iface = payload.get("interface") or "wg0"
+    if not name or not public_key:
+        print(json.dumps({"ok": False, "error": "name and publicKey required"}))
+        sys.exit(2)
+    if not re.fullmatch(r"[A-Za-z0-9+/]{42,44}=", public_key):
+        print(json.dumps({"ok": False, "error": "invalid public key"}))
+        sys.exit(2)
+
+    conf_path = f"/etc/wireguard/{iface}.conf"
+    if not os.path.exists(conf_path):
+        print(json.dumps({"ok": False, "error": "missing wg conf"}))
+        sys.exit(1)
+
+    conf = open(conf_path).read()
+    start = f"{BEGIN}{name}"
+    end = f"{END}{name}"
+    stash_path = os.path.join(PAUSED_DIR, f"{client_safe(public_key)}.block")
+
+    # Already active in conf
+    if start in conf and end in conf and public_key in conf:
+        block_match = re.search(re.escape(start) + r"([\s\S]*?)" + re.escape(end), conf)
+        block = block_match.group(0) if block_match else ""
+        psk_m = re.search(r"PresharedKey\s*=\s*(\S+)", block)
+        allowed_m = re.search(r"AllowedIPs\s*=\s*(\S+)", block)
+        if psk_m and allowed_m:
+            wg_set_peer(iface, public_key, psk_m.group(1), allowed_m.group(1))
+        if os.path.exists(stash_path):
+            os.remove(stash_path)
+        print(json.dumps({"ok": True, "data": {"name": name, "publicKey": public_key, "alreadyActive": True}}, separators=(",", ":")))
+        return
+
+    if not os.path.exists(stash_path):
+        print(json.dumps({"ok": False, "error": "paused peer block not found"}))
+        sys.exit(2)
+
+    block = open(stash_path).read().strip() + "\n"
+    if public_key not in block or start not in block or end not in block:
+        print(json.dumps({"ok": False, "error": "invalid paused block"}))
+        sys.exit(1)
+
+    psk_m = re.search(r"PresharedKey\s*=\s*(\S+)", block)
+    allowed_m = re.search(r"AllowedIPs\s*=\s*(\S+)", block)
+    if not psk_m or not allowed_m:
+        print(json.dumps({"ok": False, "error": "incomplete peer block"}))
+        sys.exit(1)
+
+    open(conf_path + ".bak", "w").write(conf)
+    open(conf_path, "w").write(conf.rstrip() + "\n\n" + block)
+    os.chmod(conf_path, 0o600)
+
+    apply = wg_set_peer(iface, public_key, psk_m.group(1), allowed_m.group(1))
+    if apply.returncode != 0:
+        print(json.dumps({"ok": False, "error": apply.stderr.strip() or "wg set failed"}))
+        sys.exit(1)
+
+    os.remove(stash_path)
+    print(json.dumps({"ok": True, "data": {"name": name, "publicKey": public_key, "paused": False}}, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)

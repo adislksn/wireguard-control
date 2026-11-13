@@ -13,6 +13,11 @@ const HELPER_NAMES = [
   'wg-peer-revoke',
   'wg-peer-config',
   'wg-peer-dns-sync',
+  'wg-peer-pause',
+  'wg-peer-unpause',
+  'wg-peer-policy-sync',
+  'wg-peer-policy-enforce',
+  'wg-peer-quota-status',
   'dns-log-tail',
   'dns-setup'
 ]
@@ -65,7 +70,11 @@ export async function deployHelpers(target: SshTarget) {
     const timer = await readFile(join(systemdDir(), 'wg-monitor.timer'))
     await writeRemoteFile(exec, '/etc/systemd/system/wg-monitor.service', service, '644')
     await writeRemoteFile(exec, '/etc/systemd/system/wg-monitor.timer', timer, '644')
-    await exec('chmod 755 /usr/local/lib/wgcontrol/* && systemctl daemon-reload')
+    const policyService = await readFile(join(systemdDir(), 'wg-peer-policy.service'))
+    const policyTimer = await readFile(join(systemdDir(), 'wg-peer-policy.timer'))
+    await writeRemoteFile(exec, '/etc/systemd/system/wg-peer-policy.service', policyService, '644')
+    await writeRemoteFile(exec, '/etc/systemd/system/wg-peer-policy.timer', policyTimer, '644')
+    await exec('chmod 755 /usr/local/lib/wgcontrol/* && systemctl daemon-reload && systemctl enable --now wg-monitor.timer wg-peer-policy.timer || true')
     return { ok: true, hostFingerprint, helpers: HELPER_NAMES }
   }, 180_000)
 }

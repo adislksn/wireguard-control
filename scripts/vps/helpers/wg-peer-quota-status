@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""Read quota/pause status written by peer-policy-enforce."""
+import json
+import os
+import sys
+
+STATUS_PATH = "/var/lib/wgcontrol/quota-status.json"
+
+
+def main():
+    if not os.path.exists(STATUS_PATH):
+        print(json.dumps({"ok": True, "data": {"peers": {}, "updatedAt": None}}))
+        return
+    try:
+        data = json.load(open(STATUS_PATH))
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}))
+        sys.exit(1)
+    print(json.dumps({"ok": True, "data": data}, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)

@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""Enforce pause/unpause from peer policies: expire, quiet hours, daily quota."""
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+POLICY_PATH = "/var/lib/wgcontrol/peer-policies.json"
+QUOTA_DIR = "/var/lib/wgcontrol/quota"
+STATUS_PATH = "/var/lib/wgcontrol/quota-status.json"
+PAUSE = "/usr/local/lib/wgcontrol/wg-peer-pause"
+UNPAUSE = "/usr/local/lib/wgcontrol/wg-peer-unpause"
+
+
+def run_helper(path, payload):
+    proc = subprocess.run(
+        [path],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+    )
+    try:
+        return json.loads(proc.stdout.strip() or "{}")
+    except Exception:
+        return {"ok": False, "error": proc.stderr.strip() or "helper failed"}
+
+
+def wg_dump(iface):
+    proc = subprocess.run(["wg", "show", iface, "dump"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        return {}
+    out = {}
+    lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+    for line in lines[1:]:
+        parts = line.split("\t")
+        if len(parts) < 7:
+            continue
+        out[parts[0]] = {
+            "rx": int(parts[5] or 0),
+            "tx": int(parts[6] or 0),
+            "handshake": int(parts[4] or 0),
+        }
+    return out
+
+
+def local_now(tz_name):
+    try:
+        tz = ZoneInfo(tz_name or "UTC")
+    except Exception:
+        tz = timezone.utc
+    return datetime.now(tz)
+
+
+def in_quiet_hours(qh, now):
+    if not qh or not qh.get("enabled", True):
+        # enabled flag may be outside; caller checks quietHours object presence
+        pass
+    days = qh.get("days") or []
+    start = qh.get("start") or "22:00"
+    end = qh.get("end") or "07:00"
+    try:
+        sh, sm = [int(x) for x in start.split(":")]
+        eh, em = [int(x) for x in end.split(":")]
+    except Exception:
+        return False
+    if now.weekday() not in days:
+        # still handle overnight windows that started previous day
+        pass
+
+    minutes = now.hour * 60 + now.minute
+    start_m = sh * 60 + sm
+    end_m = eh * 60 + em
+    weekday = now.weekday()  # Mon=0 .. Sun=6; JS uses Sun=0 — policies store JS-style 0=Sun
+    # Convert JS day (0=Sun) to Python weekday check via stored days as JS convention
+    js_day = (weekday + 1) % 7
+
+    if start_m == end_m:
+        return False
+
+    if start_m < end_m:
+        # same-day window
+        return js_day in days and start_m <= minutes < end_m
+
+    # overnight: active from start today until midnight, or midnight until end
+    if js_day in days and minutes >= start_m:
+        return True
+    prev_js = (js_day - 1) % 7
+    if prev_js in days and minutes < end_m:
+        return True
+    return False
+
+
+def day_key(now):
+    return now.strftime("%Y-%m-%d")
+
+
+def load_quota(pubkey):
+    path = os.path.join(QUOTA_DIR, f"{pubkey.rstrip('=').replace('/', '_')}.json")
+    if not os.path.exists(path):
+        return None, path
+    try:
+        return json.load(open(path)), path
+    except Exception:
+        return None, path
+
+
+def save_quota(path, data):
+    os.makedirs(QUOTA_DIR, mode=0o755, exist_ok=True)
+    open(path, "w").write(json.dumps(data) + "\n")
+    os.chmod(path, 0o600)
+
+
+def main():
+    if os.geteuid() != 0:
+        print(json.dumps({"ok": False, "error": "root required"}))
+        sys.exit(1)
+
+    if not os.path.exists(POLICY_PATH):
+        print(json.dumps({"ok": True, "data": {"actions": [], "status": {}}}))
+        return
+
+    policy = json.load(open(POLICY_PATH))
+    iface = policy.get("interface") or "wg0"
+    peers = policy.get("peers") or []
+    dump = wg_dump(iface)
+    actions = []
+    status = {}
+
+    for peer in peers:
+        name = peer.get("deviceName") or ""
+        pubkey = peer.get("publicKey") or ""
+        if not name or not pubkey:
+            continue
+
+        reason = None
+        manual = bool(peer.get("manualPause"))
+        expires_at = peer.get("expiresAt")
+        qh = peer.get("quietHours")
+        cap = peer.get("dailyCapBytes")
+        warn_pct = int(peer.get("quotaWarnPercent") or 80)
+
+        tz_name = "UTC"
+        if isinstance(qh, dict) and qh.get("timezone"):
+            tz_name = qh["timezone"]
+        now = local_now(tz_name)
+
+        if expires_at:
+            try:
+                exp = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) >= exp:
+                    reason = "expired"
+            except Exception:
+                pass
+
+        if reason is None and isinstance(qh, dict) and peer.get("quietHoursEnabled"):
+            if in_quiet_hours(qh, now):
+                reason = "quiet_hours"
+
+        used = 0
+        warn_reached = False
+        stats = dump.get(pubkey) or {"rx": 0, "tx": 0}
+        total = int(stats["rx"]) + int(stats["tx"])
+        qdata, qpath = load_quota(pubkey)
+        dkey = day_key(now)
+        if not qdata or qdata.get("day") != dkey:
+            qdata = {"day": dkey, "baselineRx": int(stats["rx"]), "baselineTx": int(stats["tx"])}
+        # If peer not in dump (paused), keep previous used for the day
+        if pubkey in dump:
+            used = max(0, (int(stats["rx"]) - int(qdata.get("baselineRx") or 0)) + (int(stats["tx"]) - int(qdata.get("baselineTx") or 0)))
+            qdata["used"] = used
+            qdata["rx"] = int(stats["rx"])
+            qdata["tx"] = int(stats["tx"])
+        else:
+            used = int(qdata.get("used") or 0)
+        save_quota(qpath, qdata)
+
+        if cap is not None and int(cap) > 0:
+            warn_reached = used >= int(cap) * (warn_pct / 100.0)
+            if reason is None and used >= int(cap):
+                reason = "quota"
+
+        desired_pause = manual or reason is not None
+        payload = {"name": name, "publicKey": pubkey, "interface": iface}
+
+        if desired_pause:
+            res = run_helper(PAUSE, payload)
+            actions.append({"peer": name, "action": "pause", "reason": "manual" if manual else reason, "ok": bool(res.get("ok"))})
+        else:
+            res = run_helper(UNPAUSE, payload)
+            actions.append({"peer": name, "action": "unpause", "reason": None, "ok": bool(res.get("ok"))})
+
+        status[pubkey] = {
+            "deviceName": name,
+            "usedBytes": used,
+            "dailyCapBytes": cap,
+            "warnPercent": warn_pct,
+            "warnReached": warn_reached,
+            "manualPause": manual,
+            "effectiveReason": "manual" if manual else reason,
+            "paused": desired_pause,
+            "day": dkey,
+        }
+
+    open(STATUS_PATH, "w").write(json.dumps({"updatedAt": datetime.now(timezone.utc).isoformat(), "peers": status}, indent=2) + "\n")
+    os.chmod(STATUS_PATH, 0o600)
+
+    print(json.dumps({"ok": True, "data": {"actions": actions, "statusPath": STATUS_PATH, "peerCount": len(peers)}}, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        sys.exit(1)

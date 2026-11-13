@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
   })
 
   await withSshConnection(target, async (client) => {
-    await execCommand(client, 'systemctl enable --now wg-monitor.timer')
+    await execCommand(client, 'systemctl enable --now wg-monitor.timer wg-peer-policy.timer')
   })
 
   await db.update(vpsHosts).set({

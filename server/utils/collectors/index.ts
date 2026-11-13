@@ -107,6 +107,61 @@ export async function collectPeerStats() {
     })
   }
 
+  // Ingest VPS quota/pause status (written by peer-policy-enforce)
+  const quota = await runHelper<{
+    ok: boolean
+    data?: {
+      updatedAt?: string
+      peers?: Record<string, {
+        usedBytes?: number
+        warnReached?: boolean
+        effectiveReason?: string | null
+        paused?: boolean
+        manualPause?: boolean
+      }>
+    }
+  }>(target, 'wg-peer-quota-status', {})
+
+  if (quota.data?.ok && quota.data.data) {
+    const payload = JSON.stringify(quota.data.data)
+    const existingQuota = await db.select().from(collectorCursors)
+      .where(and(eq(collectorCursors.vpsId, vps.id), eq(collectorCursors.kind, 'quota')))
+      .limit(1)
+    if (existingQuota[0]) {
+      await db.update(collectorCursors).set({
+        cursor: payload,
+        updatedAt: new Date().toISOString()
+      }).where(eq(collectorCursors.id, existingQuota[0].id))
+    } else {
+      await db.insert(collectorCursors).values({
+        vpsId: vps.id,
+        kind: 'quota',
+        cursor: payload
+      })
+    }
+
+    // Reflect auto-pause reasons into local DB (do not override manual with null)
+    const remotePeers = quota.data.data.peers || {}
+    for (const local of existing) {
+      const remote = remotePeers[local.publicKey]
+      if (!remote) continue
+      const autoReason = remote.effectiveReason === 'quiet_hours'
+        || remote.effectiveReason === 'expired'
+        || remote.effectiveReason === 'quota'
+        ? remote.effectiveReason
+        : null
+      const reason = remote.manualPause ? 'manual' : autoReason
+      const shouldPause = Boolean(remote.paused)
+      if (local.paused === shouldPause && local.pausedReason === reason) continue
+      // Keep manual pause sticky if remote still reports manual
+      if (local.pausedReason === 'manual' && !remote.manualPause && shouldPause) continue
+      await db.update(peers).set({
+        paused: shouldPause,
+        pausedReason: shouldPause ? reason : null
+      }).where(eq(peers.id, local.id))
+    }
+  }
+
   await updateVpsStatus(vps.id, status.data.data.active ? 'ready' : 'no_wireguard', null)
 }
 

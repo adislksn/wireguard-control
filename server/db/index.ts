@@ -46,8 +46,9 @@ export async function getDb() {
       await migrate(dbInstance, { migrationsFolder })
     } catch {
       // Fresh projects may bootstrap via ensureSchema until migrations exist
-      await ensureSchema(dbInstance)
     }
+    // Always ensure base tables + additive columns exist
+    await ensureSchema(dbInstance)
     migrated = true
   }
   return dbInstance
@@ -102,7 +103,14 @@ async function ensureSchema(db: Db) {
       vpn_ip TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       revoked_at TEXT,
-      is_active INTEGER NOT NULL DEFAULT 1
+      is_active INTEGER NOT NULL DEFAULT 1,
+      paused INTEGER NOT NULL DEFAULT 0,
+      paused_reason TEXT,
+      expires_at TEXT,
+      quiet_hours_enabled INTEGER NOT NULL DEFAULT 0,
+      quiet_hours_json TEXT,
+      daily_cap_bytes INTEGER,
+      quota_warn_percent INTEGER NOT NULL DEFAULT 80
     );
   `)
   await db.run(`
@@ -163,6 +171,24 @@ async function ensureSchema(db: Db) {
   await db.run(`CREATE INDEX IF NOT EXISTS dns_queries_vps_ts_idx ON dns_queries(vps_id, timestamp);`)
   await db.run(`CREATE INDEX IF NOT EXISTS admin_audit_logs_ts_idx ON admin_audit_logs(timestamp);`)
   await db.run(`CREATE UNIQUE INDEX IF NOT EXISTS collector_cursors_vps_kind_idx ON collector_cursors(vps_id, kind);`)
+
+  // Additive columns for existing installs
+  const peerAlters = [
+    'ALTER TABLE peers ADD COLUMN paused INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE peers ADD COLUMN paused_reason TEXT',
+    'ALTER TABLE peers ADD COLUMN expires_at TEXT',
+    'ALTER TABLE peers ADD COLUMN quiet_hours_enabled INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE peers ADD COLUMN quiet_hours_json TEXT',
+    'ALTER TABLE peers ADD COLUMN daily_cap_bytes INTEGER',
+    'ALTER TABLE peers ADD COLUMN quota_warn_percent INTEGER NOT NULL DEFAULT 80'
+  ]
+  for (const stmt of peerAlters) {
+    try {
+      await db.run(stmt)
+    } catch {
+      // column already exists
+    }
+  }
 }
 
 export type { Db }

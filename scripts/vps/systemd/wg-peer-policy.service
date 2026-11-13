@@ -1,0 +1,8 @@
+[Unit]
+Description=Enforce wgcontrol peer pause/quiet-hours/quota policies
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/wgcontrol/wg-peer-policy-enforce
+Nice=10

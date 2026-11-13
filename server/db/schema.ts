@@ -53,7 +53,14 @@ export const peers = sqliteTable('peers', {
   vpnIp: text('vpn_ip').notNull(),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   revokedAt: text('revoked_at'),
-  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true)
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
+  pausedReason: text('paused_reason'),
+  expiresAt: text('expires_at'),
+  quietHoursEnabled: integer('quiet_hours_enabled', { mode: 'boolean' }).notNull().default(false),
+  quietHoursJson: text('quiet_hours_json'),
+  dailyCapBytes: integer('daily_cap_bytes'),
+  quotaWarnPercent: integer('quota_warn_percent').notNull().default(80)
 }, table => [
   uniqueIndex('peers_vps_public_key_idx').on(table.vpsId, table.publicKey),
   index('peers_vps_vpn_ip_idx').on(table.vpsId, table.vpnIp),

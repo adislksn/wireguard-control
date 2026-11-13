@@ -18,6 +18,16 @@ export interface VpsHost {
   updatedAt: string
 }
 
+export type PeerOnlineStatus = 'online' | 'offline' | 'paused' | 'expired' | 'revoked'
+export type PeerPausedReason = 'manual' | 'quiet_hours' | 'expired' | 'quota' | null
+
+export interface QuietHoursConfig {
+  days: number[]
+  start: string
+  end: string
+  timezone: string
+}
+
 export interface PeerRow {
   id: number
   deviceName: string
@@ -29,9 +39,19 @@ export interface PeerRow {
   createdAt: string
   revokedAt: string | null
   isActive: boolean
+  paused: boolean
+  pausedReason: PeerPausedReason
+  expiresAt: string | null
+  quietHoursEnabled: boolean
+  quietHours: QuietHoursConfig | null
+  dailyCapBytes: number | null
+  quotaWarnPercent: number
   latestHandshake: string | null
   rxBytes: number
   txBytes: number
+  onlineStatus: PeerOnlineStatus
+  quotaUsedBytes: number
+  quotaWarnReached: boolean
 }
 
 export interface DashboardOverview {

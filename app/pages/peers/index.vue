@@ -1,27 +1,64 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { PeerRow } from '~/types'
+import type { PeerOnlineStatus, PeerRow } from '~/types'
 import { formatBytes, formatLocalTime } from '~/utils/format'
+import { h, resolveComponent } from 'vue'
 
 const toast = useToast()
+const UBadge = resolveComponent('UBadge')
 const { data, status, refresh } = await useFetch<PeerRow[]>('/api/peers', { default: () => [] })
 
 const revokeOpen = ref(false)
 const revokeTarget = ref<PeerRow | null>(null)
 const showKeys = ref(false)
+const actionLoading = ref<number | null>(null)
+
+function statusColor(s: PeerOnlineStatus) {
+  if (s === 'online') return 'success'
+  if (s === 'paused' || s === 'expired') return 'warning'
+  if (s === 'revoked') return 'error'
+  return 'neutral'
+}
+
+function statusLabel(peer: PeerRow) {
+  if (peer.onlineStatus === 'paused' && peer.pausedReason) {
+    return `paused (${peer.pausedReason.replace('_', ' ')})`
+  }
+  return peer.onlineStatus
+}
+
+function quotaLabel(peer: PeerRow) {
+  if (!peer.dailyCapBytes) return '—'
+  return `${formatBytes(peer.quotaUsedBytes)} / ${formatBytes(peer.dailyCapBytes)}`
+}
 
 const columns: TableColumn<PeerRow>[] = [
   { accessorKey: 'deviceName', header: 'Device' },
   { accessorKey: 'vpnIp', header: 'VPN IP' },
   {
-    accessorKey: 'publicKeyMasked',
-    header: 'Public key',
-    cell: ({ row }) => showKeys.value ? row.original.publicKey : row.original.publicKeyMasked
+    accessorKey: 'onlineStatus',
+    header: 'Status',
+    cell: ({ row }) => h(UBadge, {
+      color: statusColor(row.original.onlineStatus),
+      variant: 'subtle',
+      label: statusLabel(row.original)
+    })
   },
   {
     accessorKey: 'latestHandshake',
     header: 'Handshake',
     cell: ({ row }) => formatLocalTime(row.original.latestHandshake)
+  },
+  {
+    id: 'quota',
+    header: 'Today',
+    cell: ({ row }) => {
+      const peer = row.original
+      if (!peer.dailyCapBytes) return '—'
+      return h('span', {
+        class: peer.quotaWarnReached ? 'text-warning font-medium' : undefined
+      }, quotaLabel(peer))
+    }
   },
   {
     accessorKey: 'rxBytes',
@@ -34,14 +71,9 @@ const columns: TableColumn<PeerRow>[] = [
     cell: ({ row }) => formatBytes(row.original.txBytes)
   },
   {
-    accessorKey: 'createdAt',
-    header: 'Created',
-    cell: ({ row }) => formatLocalTime(row.original.createdAt)
-  },
-  {
-    accessorKey: 'isActive',
-    header: 'Status',
-    cell: ({ row }) => row.original.isActive ? 'active' : 'revoked'
+    accessorKey: 'publicKeyMasked',
+    header: 'Public key',
+    cell: ({ row }) => showKeys.value ? row.original.publicKey : row.original.publicKeyMasked
   },
   { id: 'actions', header: '' }
 ]
@@ -53,6 +85,24 @@ async function revokePeer() {
   revokeOpen.value = false
   revokeTarget.value = null
   await refresh()
+}
+
+async function togglePause(peer: PeerRow) {
+  actionLoading.value = peer.id
+  try {
+    const path = peer.paused ? 'unpause' : 'pause'
+    await $fetch(`/api/peers/${peer.id}/${path}` as string, { method: 'POST' })
+    toast.add({ title: peer.paused ? 'Peer resumed' : 'Peer paused', color: 'success' })
+    await refresh()
+  } catch (e: unknown) {
+    toast.add({
+      title: 'Action failed',
+      description: (e as { data?: { statusMessage?: string } }).data?.statusMessage || (e as { message?: string }).message,
+      color: 'error'
+    })
+  } finally {
+    actionLoading.value = null
+  }
 }
 
 async function copyPeerConfig(peer: PeerRow) {
@@ -91,7 +141,11 @@ async function copyPeerConfig(peer: PeerRow) {
             :loading="status === 'pending'"
             @click="refresh()"
           />
-          <UButton icon="i-lucide-plus" label="Add peer" to="/peers/add" />
+          <UButton
+            icon="i-lucide-plus"
+            label="Add peer"
+            to="/peers/add"
+          />
         </template>
       </UDashboardNavbar>
     </template>
@@ -111,6 +165,16 @@ async function copyPeerConfig(peer: PeerRow) {
               variant="ghost"
               icon="i-lucide-eye"
               :to="`/peers/${row.original.id}`"
+            />
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              :icon="row.original.paused ? 'i-lucide-play' : 'i-lucide-pause'"
+              :disabled="!row.original.isActive"
+              :loading="actionLoading === row.original.id"
+              :title="row.original.paused ? 'Resume' : 'Pause'"
+              @click="togglePause(row.original)"
             />
             <UButton
               size="xs"
@@ -136,7 +200,11 @@ async function copyPeerConfig(peer: PeerRow) {
         No peers yet. Add a device to get started.
       </div>
 
-      <UModal v-model:open="revokeOpen" title="Revoke peer" description="This removes the peer from WireGuard on the VPS. This cannot be undone.">
+      <UModal
+        v-model:open="revokeOpen"
+        title="Revoke peer"
+        description="This removes the peer from WireGuard on the VPS. This cannot be undone."
+      >
         <template #body>
           <p class="text-sm mb-4">
             Revoke <strong>{{ revokeTarget?.deviceName }}</strong> ({{ revokeTarget?.vpnIp }})?

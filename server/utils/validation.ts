@@ -41,10 +41,23 @@ export const peerCreateSchema = z.object({
   description: z.string().trim().max(280).optional()
 })
 
+export const quietHoursSchema = z.object({
+  days: z.array(z.number().int().min(0).max(6)).min(1).max(7),
+  start: z.string().regex(/^\d{2}:\d{2}$/, 'Invalid start time'),
+  end: z.string().regex(/^\d{2}:\d{2}$/, 'Invalid end time'),
+  timezone: z.string().trim().min(1).max(64)
+})
+
 export const peerUpdateSchema = z.object({
   deviceName: deviceNameSchema.optional(),
   deviceType: z.enum(['phone', 'tablet', 'laptop', 'desktop', 'router', 'other']).optional(),
-  description: z.string().trim().max(280).nullable().optional()
+  description: z.string().trim().max(280).nullable().optional(),
+  expiresAt: z.string().min(1).nullable().optional()
+    .refine(v => v === null || v === undefined || !Number.isNaN(Date.parse(v)), 'Invalid expiresAt'),
+  quietHoursEnabled: z.boolean().optional(),
+  quietHours: quietHoursSchema.nullable().optional(),
+  dailyCapBytes: z.number().int().min(0).nullable().optional(),
+  quotaWarnPercent: z.number().int().min(1).max(100).optional()
 })
 
 export const loginSchema = z.object({

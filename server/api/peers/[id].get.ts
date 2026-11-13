@@ -1,6 +1,7 @@
 import { and, desc, eq, or, sql } from 'drizzle-orm'
 import { getDb } from '../../db'
-import { dnsQueries, peerSnapshots, peers } from '../../db/schema'
+import { collectorCursors, dnsQueries, peerSnapshots, peers } from '../../db/schema'
+import { computeOnlineStatus, normalizePausedReason, parseQuietHours } from '../../utils/peers/status'
 
 export default defineEventHandler(async (event) => {
   const id = Number(getRouterParam(event, 'id'))
@@ -25,10 +26,59 @@ export default defineEventHandler(async (event) => {
     .from(dnsQueries)
     .where(peerMatch)
 
+  let quotaUsedBytes = 0
+  let quotaWarnReached = false
+  let effectiveReason = normalizePausedReason(peer.pausedReason)
+  let paused = Boolean(peer.paused)
+
+  const quotaCursor = (await db.select().from(collectorCursors)
+    .where(and(eq(collectorCursors.vpsId, peer.vpsId), eq(collectorCursors.kind, 'quota')))
+    .limit(1))[0]
+  if (quotaCursor?.cursor) {
+    try {
+      const parsed = JSON.parse(quotaCursor.cursor) as {
+        peers?: Record<string, {
+          usedBytes?: number
+          warnReached?: boolean
+          effectiveReason?: string | null
+          paused?: boolean
+        }>
+      }
+      const q = parsed.peers?.[peer.publicKey]
+      if (q) {
+        quotaUsedBytes = Number(q.usedBytes || 0)
+        quotaWarnReached = Boolean(q.warnReached)
+        effectiveReason = normalizePausedReason(q.effectiveReason) || effectiveReason
+        paused = Boolean(q.paused || paused)
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const latest = snaps[0] || null
+  const onlineStatus = computeOnlineStatus({
+    isActive: peer.isActive,
+    paused,
+    pausedReason: effectiveReason,
+    expiresAt: peer.expiresAt,
+    latestHandshake: latest?.latestHandshake || null
+  })
+
   return {
-    peer,
-    latest: snaps[0] || null,
+    peer: {
+      ...peer,
+      paused,
+      pausedReason: effectiveReason,
+      quietHoursEnabled: Boolean(peer.quietHoursEnabled),
+      quietHours: parseQuietHours(peer.quietHoursJson),
+      quotaWarnPercent: peer.quotaWarnPercent ?? 80
+    },
+    latest,
     dnsQueryCount: Number(dnsCountRows[0]?.count || 0),
-    recentDomains: recentDns
+    recentDomains: recentDns,
+    onlineStatus,
+    quotaUsedBytes,
+    quotaWarnReached
   }
 })
